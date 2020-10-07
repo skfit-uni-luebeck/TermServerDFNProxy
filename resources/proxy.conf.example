@@ -1,0 +1,14 @@
+upstream.adress=terminology-highmed.medic.medfak.uni-koeln.de
+upstream.protocol=https
+proxy.listen=4242
+proxy.publicadress=localhost:4242
+proxy.protocol=http
+
+
+ssl.keystore.type=JKS
+ssl.keystore.filename=resources/private.jks
+ssl.keystore.password=password
+ssl.keypair.alias=private
+ssl.keypair.password=password
+ssl.trusted-certificates.load=false
+ssl.trusted-certificates.alias-list=
