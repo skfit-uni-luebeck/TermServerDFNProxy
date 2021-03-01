@@ -1,8 +1,7 @@
-package de.uniluebeck.itcrl
+package de.uniluebeck.itcrl.termserverdfnproxy
 
 import com.beust.klaxon.JsonArray
 import com.beust.klaxon.JsonObject
-import com.beust.klaxon.Parser
 import com.fasterxml.jackson.databind.SerializationFeature
 import com.natpryce.konfig.*
 import io.ktor.application.*
@@ -34,47 +33,46 @@ import java.time.format.DateTimeFormatter
 import kotlin.text.toCharArray
 import com.beust.klaxon.Parser.Companion as KlaxonParser
 
-object upstream : PropertyGroup() {
-    val adress by stringType
+object Upstream : PropertyGroup() {
+    val address by stringType
     val protocol by stringType
 }
 
-object proxy : PropertyGroup() {
+object Proxy : PropertyGroup() {
     val listen by intType
-    val publicadress by stringType
+    val publicAddress by stringType
     val protocol by stringType
 }
 
-object ssl : PropertyGroup() {
-    object keystore : PropertyGroup() {
+object Ssl : PropertyGroup() {
+    object Keystore : PropertyGroup() {
         val type by stringType
         val filename by stringType
         val password by stringType
     }
 
-    object keypair : PropertyGroup() {
+    object Keypair : PropertyGroup() {
         val alias by stringType
         val password by stringType
     }
 
-    object trustedCertificates : PropertyGroup() {
+    object TrustedCertificates : PropertyGroup() {
         val load by booleanType
-        val aliasList by stringType
+        //val aliasList by stringType
     }
 }
 
 val configuration = ConfigurationProperties.fromResource("proxy.conf")
 
 fun clientCertificates(): CertificateAndKey {
-    val keyStore = KeyStore.getInstance(configuration[ssl.keystore.type])
-    val keystorePassword = configuration[ssl.keystore.password].toCharArray()
-    val keypairPassword = configuration[ssl.keypair.password].toCharArray()
-    keyStore.load(FileInputStream(configuration[ssl.keystore.filename]), keystorePassword)
-    val keypairAlias = configuration[ssl.keypair.alias]
+    val keyStore = KeyStore.getInstance(configuration[Ssl.Keystore.type])
+    val keystorePassword = configuration[Ssl.Keystore.password].toCharArray()
+    val keypairPassword = configuration[Ssl.Keypair.password].toCharArray()
+    keyStore.load(FileInputStream(configuration[Ssl.Keystore.filename]), keystorePassword)
+    val keypairAlias = configuration[Ssl.Keypair.alias]
     val cert = keyStore.getCertificate(keypairAlias) as X509Certificate
     val key = keyStore.getKey(keypairAlias, keypairPassword) as PrivateKey
-    if (ssl.trustedCertificates.load.equals(true)) {
-        // STOPSHIP: 06.10.20 not implemented
+    if (Ssl.TrustedCertificates.load.equals(true)) {
         throw NotImplementedError()
     }
     return CertificateAndKey(arrayOf(cert), key)
@@ -91,7 +89,7 @@ fun main() {
     //adapted from https://gist.github.com/Karewan/4b0270755e7053b471fdca4419467216
     Security.insertProviderAt(Conscrypt.newProvider(), 1)
     @Suppress("BlockingMethodInNonBlockingContext", "UNCHECKED_CAST")
-    val server = embeddedServer(Jetty, configuration[proxy.listen]) {
+    val server = embeddedServer(Jetty, configuration[Proxy.listen]) {
 
         /*
          * used for sending out JSON
@@ -128,8 +126,8 @@ fun main() {
 
         //we intercept all requests (regardless of routing) at the Call state and pass them to the upstream
         intercept(ApplicationCallPipeline.Call) {
-            val upstreamUri = "${configuration[upstream.protocol]}://${
-                configuration[upstream.adress].replace(
+            val upstreamUri = "${configuration[Upstream.protocol]}://${
+                configuration[Upstream.address].replace(
                     Regex("https?://"),
                     ""
                 )
@@ -205,12 +203,14 @@ fun main() {
                 ).contains(proxyResponse.status)
             ) {
                 //we want to respond with an OperationOutcome resource in the spirit of FHIR
-                var receivedErrorString: String = "none given"
+                var receivedErrorString = "none given"
                 val issue = mutableListOf(
                     mapOf(
                         "code" to proxyResponse.status.value.toString(), "severity" to "error",
-                        "details" to mapOf("text" to "upstream server did not accept request " +
-                                "with status code ${proxyResponse.status.value}")
+                        "details" to mapOf(
+                            "text" to "upstream server did not accept request " +
+                                    "with status code ${proxyResponse.status.value}"
+                        )
                     )
                 )
                 if (contentType?.contains(Regex("json|xml|text")) == true) {
@@ -240,8 +240,8 @@ fun main() {
              * function to replace all mentions of the upstream URL with our endpoint (e.g. in the syndication feed!)
              */
             fun String.replaceUpstreamUrl() = this.replace(
-                Regex("(https?:)?//${configuration[upstream.adress]}"),
-                "${configuration[proxy.protocol]}://${configuration[proxy.publicadress]}"
+                Regex("(https?:)?//${configuration[Upstream.address]}"),
+                "${configuration[Proxy.protocol]}://${configuration[Proxy.publicAddress]}"
             )
             /**
              * if the upstream had a Location header, insert our endpoint here
@@ -284,7 +284,7 @@ fun main() {
                                 key != HttpHeaders.ContentType && key != HttpHeaders.ContentLength
                             })
                         }
-                        override val status: HttpStatusCode?
+                        override val status: HttpStatusCode
                             get() = proxyResponse.status
 
                         override suspend fun writeTo(channel: ByteWriteChannel) {
