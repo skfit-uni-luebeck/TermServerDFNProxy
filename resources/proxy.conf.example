@@ -10,5 +10,4 @@ Ssl.Keystore.filename=resources/private.jks
 Ssl.Keystore.password=password
 Ssl.Keypair.alias=private
 Ssl.Keypair.password=password
-Ssl.Trusted-certificates.load=false
-Ssl.Trusted-certificates.alias-list=
+

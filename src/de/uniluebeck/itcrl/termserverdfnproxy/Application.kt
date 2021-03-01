@@ -56,10 +56,10 @@ object Ssl : PropertyGroup() {
         val password by stringType
     }
 
-    object TrustedCertificates : PropertyGroup() {
+    /*object TrustedCertificates : PropertyGroup() {
         val load by booleanType
         //val aliasList by stringType
-    }
+    }*/
 }
 
 val configuration = ConfigurationProperties.fromResource("proxy.conf")
@@ -72,9 +72,9 @@ fun clientCertificates(): CertificateAndKey {
     val keypairAlias = configuration[Ssl.Keypair.alias]
     val cert = keyStore.getCertificate(keypairAlias) as X509Certificate
     val key = keyStore.getKey(keypairAlias, keypairPassword) as PrivateKey
-    if (Ssl.TrustedCertificates.load.equals(true)) {
+    /*if (Ssl.TrustedCertificates.load.equals(true)) {
         throw NotImplementedError()
-    }
+    }*/
     return CertificateAndKey(arrayOf(cert), key)
 }
 
