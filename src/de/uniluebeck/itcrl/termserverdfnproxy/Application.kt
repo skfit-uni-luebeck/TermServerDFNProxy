@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.SerializationFeature
 import com.natpryce.konfig.*
 import io.ktor.application.*
 import io.ktor.client.*
+import io.ktor.client.engine.apache.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
@@ -22,6 +23,9 @@ import io.ktor.server.jetty.*
 import io.ktor.server.netty.*
 import io.ktor.util.*
 import io.ktor.utils.io.*
+import org.apache.http.conn.ssl.NoopHostnameVerifier
+import org.apache.http.conn.ssl.TrustSelfSignedStrategy
+import org.apache.http.ssl.SSLContextBuilder
 import org.conscrypt.Conscrypt
 import java.io.FileInputStream
 import java.security.KeyStore
@@ -30,6 +34,7 @@ import java.security.Security
 import java.security.cert.X509Certificate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import javax.net.ssl.*
 import kotlin.text.toCharArray
 import com.beust.klaxon.Parser.Companion as KlaxonParser
 
@@ -64,6 +69,17 @@ object Ssl : PropertyGroup() {
 
 val configuration = ConfigurationProperties.fromResource("proxy.conf")
 
+fun sslConfig(): SSLContext {
+    val keyPassword = configuration[Ssl.Keypair.password].toCharArray()
+    val keyStore = KeyStore.getInstance(configuration[Ssl.Keystore.type])
+    keyStore.load(FileInputStream(configuration[Ssl.Keystore.filename]), keyPassword)
+    return SSLContextBuilder
+        .create()
+        .loadKeyMaterial(keyStore, keyPassword)
+        .loadTrustMaterial(TrustSelfSignedStrategy())
+        .build()
+}
+
 fun clientCertificates(): CertificateAndKey {
     val keyStore = KeyStore.getInstance(configuration[Ssl.Keystore.type])
     val keystorePassword = configuration[Ssl.Keystore.password].toCharArray()
@@ -79,6 +95,24 @@ fun clientCertificates(): CertificateAndKey {
 }
 
 val regexTextBody = Regex("(application|text)/(atom|fhir)?\\+?(xml|json|html|plain)")
+
+/*class TrustManager : X509TrustManager {
+    val systemTrustManager =
+        TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).trustManagers.first()
+
+    override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {
+
+    }
+
+    override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {
+        TODO("Not yet implemented")
+    }
+
+    override fun getAcceptedIssuers(): Array<X509Certificate> {
+        TODO("Not yet implemented")
+    }
+
+}*/
 
 /**
  * adapted from https://github.com/ktorio/ktor-samples/blob/1.3.0/other/reverse-proxy/src/ReverseProxyApplication.kt
@@ -109,19 +143,25 @@ fun main() {
         /**
          * SUPPRESSED: CIO is experimental, but works fine for this app
          */
-        fun getClient() = HttpClient(CIO) {
+        fun getClient() = HttpClient(Apache) {
             //FHIR specifies a text body for 404 requests. If this is not set, recv'ing this payload
             //when the request 404's results in exceptions
             expectSuccess = false
             //configure the HTTPS engine
             engine {
+                customizeClient {
+                    setSSLContext(sslConfig())
+                    setSSLHostnameVerifier(NoopHostnameVerifier())
+                }
+            }
+            /*engine {
                 https {
                     //cipherSuites = CIOCipherSuites.SupportedSuites
                     //add the provided client certificates
                     certificates.add(clientCertificates)
                     //TODO add method for adding untrusted trusted certificates
                 }
-            }
+            }*/
         }
 
         //we intercept all requests (regardless of routing) at the Call state and pass them to the upstream
