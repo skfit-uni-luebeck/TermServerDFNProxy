@@ -1,13 +1,13 @@
 Upstream.address=terminology-highmed.medic.medfak.uni-koeln.de
+Upstream.port=443
 Upstream.protocol=https
 Proxy.listen=4242
-Proxy.publicaddress=localhost:4242
+Proxy.publicAddress=localhost:4242
 Proxy.protocol=http
-
+Proxy.useKeystore=true
 
 Ssl.Keystore.type=JKS
 Ssl.Keystore.filename=resources/private.jks
 Ssl.Keystore.password=password
 Ssl.Keypair.alias=private
 Ssl.Keypair.password=password
-

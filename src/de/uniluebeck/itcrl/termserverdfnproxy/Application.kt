@@ -7,7 +7,6 @@ import com.natpryce.konfig.*
 import io.ktor.application.*
 import io.ktor.client.*
 import io.ktor.client.engine.apache.*
-import io.ktor.client.engine.cio.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.content.TextContent
@@ -15,7 +14,6 @@ import io.ktor.features.*
 import io.ktor.http.*
 import io.ktor.http.content.*
 import io.ktor.jackson.*
-import io.ktor.network.tls.*
 import io.ktor.request.*
 import io.ktor.response.*
 import io.ktor.server.engine.*
@@ -29,9 +27,7 @@ import org.apache.http.ssl.SSLContextBuilder
 import org.conscrypt.Conscrypt
 import java.io.FileInputStream
 import java.security.KeyStore
-import java.security.PrivateKey
 import java.security.Security
-import java.security.cert.X509Certificate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import javax.net.ssl.*
@@ -41,12 +37,14 @@ import com.beust.klaxon.Parser.Companion as KlaxonParser
 object Upstream : PropertyGroup() {
     val address by stringType
     val protocol by stringType
+    val port by intType
 }
 
 object Proxy : PropertyGroup() {
     val listen by intType
     val publicAddress by stringType
     val protocol by stringType
+    val useKeystore by booleanType
 }
 
 object Ssl : PropertyGroup() {
@@ -57,67 +55,31 @@ object Ssl : PropertyGroup() {
     }
 
     object Keypair : PropertyGroup() {
-        val alias by stringType
         val password by stringType
     }
-
-    /*object TrustedCertificates : PropertyGroup() {
-        val load by booleanType
-        //val aliasList by stringType
-    }*/
 }
 
 val configuration = ConfigurationProperties.fromResource("proxy.conf")
 
-fun sslConfig(): SSLContext {
-    val keyPassword = configuration[Ssl.Keypair.password].toCharArray()
-    val keyStore = KeyStore.getInstance(configuration[Ssl.Keystore.type])
-    keyStore.load(FileInputStream(configuration[Ssl.Keystore.filename]), keyPassword)
-    return SSLContextBuilder
-        .create()
-        .loadKeyMaterial(keyStore, keyPassword)
-        .loadTrustMaterial(TrustSelfSignedStrategy())
+fun sslConfig(): SSLContext = SSLContextBuilder.create().let {
+    return@let when (configuration[Proxy.useKeystore]) {
+        true -> {
+            val keyStorePassword = configuration[Ssl.Keystore.password].toCharArray()
+            val keyPassword = configuration[Ssl.Keypair.password].toCharArray()
+            val keyStore = KeyStore.getInstance(configuration[Ssl.Keystore.type])
+            keyStore.load(FileInputStream(configuration[Ssl.Keystore.filename]), keyStorePassword)
+            it.loadKeyMaterial(keyStore, keyPassword)
+        }
+        else -> it
+    }.loadTrustMaterial(TrustSelfSignedStrategy())
         .build()
-}
-
-fun clientCertificates(): CertificateAndKey {
-    val keyStore = KeyStore.getInstance(configuration[Ssl.Keystore.type])
-    val keystorePassword = configuration[Ssl.Keystore.password].toCharArray()
-    val keypairPassword = configuration[Ssl.Keypair.password].toCharArray()
-    keyStore.load(FileInputStream(configuration[Ssl.Keystore.filename]), keystorePassword)
-    val keypairAlias = configuration[Ssl.Keypair.alias]
-    val cert = keyStore.getCertificate(keypairAlias) as X509Certificate
-    val key = keyStore.getKey(keypairAlias, keypairPassword) as PrivateKey
-    /*if (Ssl.TrustedCertificates.load.equals(true)) {
-        throw NotImplementedError()
-    }*/
-    return CertificateAndKey(arrayOf(cert), key)
 }
 
 val regexTextBody = Regex("(application|text)/(atom|fhir)?\\+?(xml|json|html|plain)")
 
-/*class TrustManager : X509TrustManager {
-    val systemTrustManager =
-        TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).trustManagers.first()
-
-    override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {
-
-    }
-
-    override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {
-        TODO("Not yet implemented")
-    }
-
-    override fun getAcceptedIssuers(): Array<X509Certificate> {
-        TODO("Not yet implemented")
-    }
-
-}*/
-
 /**
  * adapted from https://github.com/ktorio/ktor-samples/blob/1.3.0/other/reverse-proxy/src/ReverseProxyApplication.kt
  */
-@KtorExperimentalAPI
 fun main() {
     //handle modern TLS 1.3 and TLS 1.2 with modern cipher suites, instead of relying on the JDKs security implementation
     //adapted from https://gist.github.com/Karewan/4b0270755e7053b471fdca4419467216
@@ -135,14 +97,6 @@ fun main() {
             }
         }
 
-        /**
-         * read the client certificates from disk
-         */
-        val clientCertificates = clientCertificates()
-
-        /**
-         * SUPPRESSED: CIO is experimental, but works fine for this app
-         */
         fun getClient() = HttpClient(Apache) {
             //FHIR specifies a text body for 404 requests. If this is not set, recv'ing this payload
             //when the request 404's results in exceptions
@@ -154,14 +108,6 @@ fun main() {
                     setSSLHostnameVerifier(NoopHostnameVerifier())
                 }
             }
-            /*engine {
-                https {
-                    //cipherSuites = CIOCipherSuites.SupportedSuites
-                    //add the provided client certificates
-                    certificates.add(clientCertificates)
-                    //TODO add method for adding untrusted trusted certificates
-                }
-            }*/
         }
 
         //we intercept all requests (regardless of routing) at the Call state and pass them to the upstream
@@ -172,7 +118,8 @@ fun main() {
                     ""
                 )
             }"
-            val requestUri = upstreamUri + this.context.request.uri
+            val requestPath = this.context.request.uri.trimStart('/')
+            val requestUri = "$upstreamUri:${configuration[Upstream.port]}/$requestPath".also { log.info(it) }
             //we need to provide a body for POST, PUT, PATCH, but none otherwise
 
             log.info(
@@ -280,7 +227,7 @@ fun main() {
              * function to replace all mentions of the upstream URL with our endpoint (e.g. in the syndication feed!)
              */
             fun String.replaceUpstreamUrl() = this.replace(
-                Regex("(https?:)?//${configuration[Upstream.address]}"),
+                Regex("(https?:)?//${configuration[Upstream.address]}(:${configuration[Upstream.port]})?"),
                 "${configuration[Proxy.protocol]}://${configuration[Proxy.publicAddress]}"
             )
             /**
