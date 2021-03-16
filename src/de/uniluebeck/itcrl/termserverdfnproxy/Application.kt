@@ -21,10 +21,12 @@ import io.ktor.server.jetty.*
 import io.ktor.server.netty.*
 import io.ktor.util.*
 import io.ktor.utils.io.*
+import org.apache.http.client.methods.HttpHead
 import org.apache.http.conn.ssl.NoopHostnameVerifier
 import org.apache.http.conn.ssl.TrustSelfSignedStrategy
 import org.apache.http.ssl.SSLContextBuilder
 import org.conscrypt.Conscrypt
+import org.eclipse.jetty.http.HttpHeader
 import java.io.FileInputStream
 import java.security.KeyStore
 import java.security.Security
@@ -95,6 +97,11 @@ fun main() {
                 //pretty-print
                 enable(SerializationFeature.INDENT_OUTPUT)
             }
+        }
+
+        install(CORS) {
+            method(HttpMethod.Options)
+            anyHost()
         }
 
         fun getClient() = HttpClient(Apache) {
@@ -242,7 +249,7 @@ fun main() {
                 // upstream links.
                 contentType?.contains(regexTextBody) == true -> {
                     val text = proxyResponse.readText().replaceUpstreamUrl()
-                    log.debug("responding with text, ${text.length} chars, starting ${text.substring(0, 30)}")
+                    log.debug("responding with text, ${text.length} chars, starting ${text.substring(0, 30).replace("\n", " ")}")
                     call.respond(
                         TextContent(
                             text,
@@ -268,7 +275,7 @@ fun main() {
                          */
                         override val headers: Headers = Headers.build {
                             appendAll(proxiedHeaders.filter { key, _ ->
-                                key != HttpHeaders.ContentType && key != HttpHeaders.ContentLength
+                                key != HttpHeaders.ContentType && key != HttpHeaders.ContentLength && key != HttpHeaders.TransferEncoding
                             })
                         }
                         override val status: HttpStatusCode
