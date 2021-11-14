@@ -30,6 +30,7 @@ import org.eclipse.jetty.http.HttpHeader
 import java.io.FileInputStream
 import java.security.KeyStore
 import java.security.Security
+import java.time.Duration
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import javax.net.ssl.*
@@ -99,10 +100,26 @@ fun main() {
             }
         }
 
-        install(CORS) {
-            method(HttpMethod.Options)
-            anyHost()
-        }
+//        install(CORS) {
+//            method(HttpMethod.Options)
+//            method(HttpMethod.Post)
+//            method(HttpMethod.Put)
+//            method(HttpMethod.Delete)
+//            method(HttpMethod.Get)
+//            method(HttpMethod.Patch)
+//            method(HttpMethod.Head)
+//            allowXHttpMethodOverride()
+//            allowNonSimpleContentTypes = true
+//            allowSameOrigin = true
+//            anyHost()
+//            exposeHeader(HttpHeaders.ContentType)
+//            exposeHeader(HttpHeaders.IfNoneMatch)
+//            exposeHeader(HttpHeaders.AccessControlAllowHeaders)
+//            exposeHeader(HttpHeaders.AccessControlAllowOrigin)
+//            allowCredentials = true
+//            allowNonSimpleContentTypes = true
+//            maxAgeInSeconds = 60 * 60 * 24
+//        }
 
         fun getClient() = HttpClient(Apache) {
             //FHIR specifies a text body for 404 requests. If this is not set, recv'ing this payload
@@ -119,6 +136,14 @@ fun main() {
 
         //we intercept all requests (regardless of routing) at the Call state and pass them to the upstream
         intercept(ApplicationCallPipeline.Call) {
+
+            if (this.context.request.httpMethod == HttpMethod.Options) {
+                log.info("OPTIONS from ${context.request.origin}")
+                addCors(call)
+                call.respond(HttpStatusCode.NoContent)
+                return@intercept //OPTIONS means we are done!
+            }
+
             val upstreamUri = "${configuration[Upstream.protocol]}://${
                 configuration[Upstream.address].replace(
                     Regex("https?://"),
@@ -226,6 +251,7 @@ fun main() {
                     "upstream server did not accept request with status code ${proxyResponse.status} " +
                             "and error '$receivedErrorString'"
                 )
+                addCors(call)
                 call.respond(proxyResponse.status, responseJson)
                 return@intercept //we are done handling this request
             }
@@ -250,6 +276,7 @@ fun main() {
                 contentType?.contains(regexTextBody) == true -> {
                     val text = proxyResponse.readText().replaceUpstreamUrl()
                     log.debug("responding with text, ${text.length} chars, starting ${text.substring(0, 30).replace("\n", " ")}")
+                    addCors(call)
                     call.respond(
                         TextContent(
                             text,
@@ -291,5 +318,12 @@ fun main() {
         }
     }
     server.start(wait = true)
+}
+
+fun addCors(call: ApplicationCall) {
+    call.response.header(HttpHeaders.AccessControlAllowOrigin, "*")
+    call.response.header(HttpHeaders.AccessControlAllowMethods, "GET, POST, PUT, DELETE, OPTIONS")
+    call.response.header(HttpHeaders.AccessControlAllowHeaders, "X-FHIR-Starter,Accept,Authorization,Cache-Control,Content-Type,Access-Control-Request-Method,Access-Control-Request-Headers,DNT,If-Match,If-None-Match,If-Modified-Since,Keep-Alive,Origin,User-Agent,X-Requested-With,Prefer")
+    call.response.header(HttpHeaders.AccessControlMaxAge, 60 * 60 * 24)
 }
 
