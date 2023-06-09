@@ -147,6 +147,11 @@ fun addCors(call: ApplicationCall) {
     call.response.header(HttpHeaders.AccessControlMaxAge, 60 * 60 * 24)
 }
 
+fun addMoreHeaders(call: ApplicationCall, upstreamUri: String) {
+    call.response.header(HttpHeaders.Server, "termserver-proxy")
+    call.response.header("X-Upstream-Url", upstreamUri)
+}
+
 fun Application.proxyAppModule() {
     /*
      * used for sending out JSON
@@ -278,6 +283,7 @@ fun Application.proxyAppModule() {
                         "and error '$receivedErrorString'"
             )
             addCors(call)
+            addMoreHeaders(call, upstreamUri)
             call.respond(proxyResponse.status, responseJson)
             return@intercept //we are done handling this request
         }
@@ -307,6 +313,7 @@ fun Application.proxyAppModule() {
                     }"
                 )
                 addCors(call)
+                addMoreHeaders(call, upstreamUri)
                 call.respond(
                     TextContent(
                         text,
