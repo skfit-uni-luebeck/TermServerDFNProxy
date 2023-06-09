@@ -16,14 +16,11 @@ plugins {
 apply plugin: 'kotlin'
 
 group 'de.uniluebeck.itcrl'
-version '0.0.1'
+version '1.0.0'
 mainClassName = "de.uniluebeck.itcrl.termserverdfnproxy.ApplicationKt"
 
 sourceSets {
-    main.kotlin.srcDirs = main.java.srcDirs = ['src']
-    test.kotlin.srcDirs = test.java.srcDirs = ['test']
     main.resources.srcDirs = ['resources']
-    test.resources.srcDirs = ['testresources']
 }
 
 repositories {
