@@ -237,12 +237,6 @@ fun Application.proxyAppModule() {
                     }
                 }
             }
-            mainLogger.debug(
-                "proxyRequest to {}, {}, status {}",
-                requestUri,
-                call.request.httpMethod.value,
-                proxyResponse.status
-            )
             proxiedHeaders = proxyResponse.headers
             location = proxiedHeaders[HttpHeaders.Location]
             contentType = proxiedHeaders[HttpHeaders.ContentType]
