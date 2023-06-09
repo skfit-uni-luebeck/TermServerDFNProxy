@@ -51,3 +51,10 @@ For a permanent deployment, you will need to also adjust the public address in t
 hostname, so that the proxy can rewrite the URLs in the responses from the central server correctly. Currently, this app
 doesn't do TLS termination, so you will need to put it behind a reverse proxy that does TLS termination for you if
 required. If you do so, also adjust the protocol in the configuration file to `https`.
+
+If you need to change the build architecture (e.g. when running on an ARM-based system), it is recommended to build the
+docker container from source. Simply uncomment the following line from the docker-compose file:
+
+```
+    #    build: .
+```

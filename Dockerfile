@@ -1,7 +1,4 @@
-FROM --platform=$BUILDPLATFORM azul/zulu-openjdk:17
-ARG TARGETPLATFORM
-ARG BUILDPLATFORM
-RUN echo "Running on $BUILDPLATFORM, building for $TARGETPLATFORM"
+FROM azul/zulu-openjdk:17
 WORKDIR /app
 ADD . /app
 RUN ./gradlew clean jar
