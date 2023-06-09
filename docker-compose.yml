@@ -1,0 +1,8 @@
+version: '3'
+services:
+  proxy:
+    image: quay.io/itcrl/termserver-dfn-proxy:latest
+    ports:
+      - "4242:4242"
+    volumes:
+      - ./proxy.conf:/proxy.conf

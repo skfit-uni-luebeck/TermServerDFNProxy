@@ -183,3 +183,4 @@ resources/proxy.conf
 **/*.jks
 **/*.p12
 **/*.pem
+**/proxy.conf
