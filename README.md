@@ -1,14 +1,16 @@
 ## Proxy for the central Ontoserver in Germany
 
+[![Docker Repository on Quay](https://quay.io/repository/itcrl/termserver-dfn-proxy/status "Docker Repository on Quay")](https://quay.io/repository/itcrl/termserver-dfn-proxy)
+
 The current central Ontoserver instance for the German Medizininformatik-Initiative (MI-I)
-hosted in Cologne, available at https://terminology-highmed.medic.medfak.uni-koeln.de/, 
+hosted in Cologne, available at https://terminology-highmed.medic.medfak.uni-koeln.de/,
 is secured by Mutual TLS Authentication. The service is available to individuals and
-organizations within the MI-I, as partners of and actors in the 4 consortia, 
+organizations within the MI-I, as partners of and actors in the 4 consortia,
 within POLAR\_MI and CORD-MI, and within the Network University Medicine (NUM).
 
-Only authenticated clients can access resources on this server. 
-You will need to obtain a certificate issued within the 
-Deutsches Forschungsnetz-Private Key infractructure (DFN-PKI) 
+Only authenticated clients can access resources on this server.
+You will need to obtain a certificate issued within the
+Deutsches Forschungsnetz-Private Key infractructure (DFN-PKI)
 with the profile "User" or "802.1X Client" to use this service.
 
 To consume resources on this server, you should make sure that
@@ -29,6 +31,23 @@ types matching `/(application|text)/(fhir|atom)?+?(json|xml|plain|html)/`), all 
 of the configured upstream url are rewritten to point to the proxy. This makes syndication
 possible using this proxy, if your local Ontoserver points at this proxy.
 
-To set up this system, you will a current Java Development Kit, e.g. from https://adoptopenjdk.net/
+To set up this system, you will a current Java Development Kit, e.g. from https://azul.com
 The project is built using Gradle. You will also need your certificate and private key in a format
-that can be consumed by the JDK (PKCS12 or JKS format recommended, you can use https://keystore-explorer.org/ for converting to these formats). 
+that can be consumed by the JDK (PKCS12 or JKS format recommended, you can use https://keystore-explorer.org/ for
+converting to these formats).
+
+## Docker
+
+This app is also available from the Docker registry *quay.io*.
+
+You can use the included docker-compose to get started. Beforehand, you will need to copy the configuration template
+in [`resources/proxy.conf.example`](resources/proxy.conf.example) to a suitable location (
+e.g. [`resources/proxy.conf`](resources/proxy.conf)),
+and maybe change the bind mound path accordingly in the docker-compose file.
+
+By default, the application will be exposed on port 4242, and you can change this in the docker-compose file.
+
+For a permanent deployment, you will need to also adjust the public address in the configuration file to match your
+hostname, so that the proxy can rewrite the URLs in the responses from the central server correctly. Currently, this app
+doesn't do TLS termination, so you will need to put it behind a reverse proxy that does TLS termination for you if
+required. If you do so, also adjust the protocol in the configuration file to `https`.
