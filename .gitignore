@@ -178,9 +178,9 @@ gradle-app.setting
 # End of https://www.toptal.com/developers/gitignore/api/maven,gradle,intellij,java,kotlin
 
 #do not add config which will contain passwords
-resources/proxy.conf
+**/proxy.conf
 #do not add key material
 **/*.jks
 **/*.p12
 **/*.pem
-**/proxy.conf
+
