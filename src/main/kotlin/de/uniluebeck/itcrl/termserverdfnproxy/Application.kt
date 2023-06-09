@@ -33,6 +33,7 @@ import java.io.FileNotFoundException
 import java.security.KeyStore
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.*
 import javax.net.ssl.SSLContext
 import kotlin.io.path.Path
 import kotlin.io.path.notExists
@@ -180,6 +181,8 @@ fun Application.proxyAppModule() {
     //we intercept all requests (regardless of routing) at the Call state and pass them to the upstream
     intercept(ApplicationCallPipeline.Call) {
 
+        val requestId = UUID.randomUUID().toString()
+
         if (this.context.request.httpMethod == HttpMethod.Options) {
             mainLogger.info("OPTIONS from ${context.request.origin}")
             addCors(call)
@@ -197,14 +200,18 @@ fun Application.proxyAppModule() {
         val requestUri = "$upstreamUri:${configuration[Upstream.port]}/$requestPath".also { mainLogger.info(it) }
         //we need to provide a body for POST, PUT, PATCH, but none otherwise
 
+        val payloadToUpstreamSize = call.request.headers[HttpHeaders.ContentLength]?.toIntOrNull()?.let {
+            "$it bytes payload, "
+        } ?: ""
         mainLogger.info(
             "${call.request.origin.serverHost}:${call.request.origin.serverPort} " +
                     "${LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)} " +
                     "${call.request.httpMethod.value} " +
                     "\"${call.request.uri}\" " +
-                    "${call.request.headers[HttpHeaders.ContentLength] ?: 0} bytes, " +
+                    payloadToUpstreamSize +
                     "${call.request.headers[HttpHeaders.ContentType] ?: "-"} " +
-                    "\"${call.request.headers[HttpHeaders.UserAgent]}\""
+                    "\"${call.request.headers[HttpHeaders.UserAgent]}\"" +
+                    "; request-id $requestId"
         )
 
         var proxyResponse: HttpResponse
@@ -240,6 +247,15 @@ fun Application.proxyAppModule() {
             location = proxiedHeaders[HttpHeaders.Location]
             contentType = proxiedHeaders[HttpHeaders.ContentType]
             contentLength = proxiedHeaders[HttpHeaders.ContentLength]
+            mainLogger.info(
+                "status {}, method {}, request-uri {}, content-length {} bytes (body-size {}b); request-id {}",
+                proxyResponse.status.value,
+                call.request.httpMethod.value,
+                requestUri,
+                contentLength,
+                proxyResponse.bodyAsChannel().toByteArray().size,
+                requestId
+            )
         }
 
         //check if the status code indicates that the server handled the request correctly. This does not 404s,

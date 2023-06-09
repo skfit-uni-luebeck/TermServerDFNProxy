@@ -1,4 +1,4 @@
-FROM azul/zulu-openjdk:17
+FROM azul/zulu-openjdk-alpine:17
 WORKDIR /app
 ADD . /app
 RUN ./gradlew clean jar
