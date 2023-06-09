@@ -4,20 +4,21 @@ import com.beust.klaxon.JsonArray
 import com.beust.klaxon.JsonObject
 import com.fasterxml.jackson.databind.SerializationFeature
 import com.natpryce.konfig.*
-import io.ktor.application.*
 import io.ktor.client.*
 import io.ktor.client.engine.apache.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.content.TextContent
-import io.ktor.features.*
 import io.ktor.http.*
 import io.ktor.http.content.*
-import io.ktor.jackson.*
-import io.ktor.request.*
-import io.ktor.response.*
+import io.ktor.serialization.jackson.*
+import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.jetty.*
+import io.ktor.server.plugins.*
+import io.ktor.server.plugins.contentnegotiation.*
+import io.ktor.server.request.*
+import io.ktor.server.response.*
 import io.ktor.util.*
 import io.ktor.utils.io.*
 import kotlinx.cli.ArgParser
@@ -93,7 +94,7 @@ fun sslConfig(): SSLContext = SSLContextBuilder.create().let { builder ->
 
 val regexTextBody = Regex("(application|text)/(atom|fhir)?\\+?(xml|json|html|plain)")
 
-val mainLogger: Logger = LoggerFactory.getLogger("main")
+val mainLogger: Logger = LoggerFactory.getLogger("termserver-proxy")
 
 /**
  * adapted from https://github.com/ktorio/ktor-samples/blob/1.3.0/other/reverse-proxy/src/ReverseProxyApplication.kt
@@ -132,9 +133,6 @@ fun main(args: Array<String>) {
         }
     }
 
-    //handle modern TLS 1.3 and TLS 1.2 with modern cipher suites, instead of relying on the JDKs security implementation
-    //adapted from https://gist.github.com/Karewan/4b0270755e7053b471fdca4419467216
-    //Security.insertProviderAt(Conscrypt.newProvider(), 1)
     val server = embeddedServer(Jetty, configuration[Proxy.listen], module = Application::proxyAppModule)
     server.start(wait = true)
 }
@@ -178,7 +176,7 @@ fun Application.proxyAppModule() {
     intercept(ApplicationCallPipeline.Call) {
 
         if (this.context.request.httpMethod == HttpMethod.Options) {
-            log.info("OPTIONS from ${context.request.origin}")
+            mainLogger.info("OPTIONS from ${context.request.origin}")
             addCors(call)
             call.respond(HttpStatusCode.NoContent)
             return@intercept //OPTIONS means we are done!
@@ -191,11 +189,11 @@ fun Application.proxyAppModule() {
             )
         }"
         val requestPath = this.context.request.uri.trimStart('/')
-        val requestUri = "$upstreamUri:${configuration[Upstream.port]}/$requestPath".also { log.info(it) }
+        val requestUri = "$upstreamUri:${configuration[Upstream.port]}/$requestPath".also { mainLogger.info(it) }
         //we need to provide a body for POST, PUT, PATCH, but none otherwise
 
-        log.info(
-            "${call.request.origin.host}:${call.request.origin.port} " +
+        mainLogger.info(
+            "${call.request.origin.serverHost}:${call.request.origin.serverPort} " +
                     "${LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)} " +
                     "${call.request.httpMethod.value} " +
                     "\"${call.request.uri}\" " +
@@ -204,24 +202,6 @@ fun Application.proxyAppModule() {
                     "\"${call.request.headers[HttpHeaders.UserAgent]}\""
         )
 
-        suspend fun receiveBody(call: ApplicationCall): Any {
-            val receivedContentType = call.request.headers[HttpHeaders.ContentType] ?: "application/octet-stream"
-            return when {
-                receivedContentType.matches(regexTextBody) -> {
-                    val text = call.receiveText()
-                    log.debug("received text, ${text.length} chars, starting ${text.substring(0, 30)}")
-                    text
-                }
-
-                else -> {
-                    val stream = call.receiveStream()
-                    log.debug("passing binary stream, ${stream.available()} bytes")
-                    stream
-                }
-            }
-        }
-
-        var proxyRequest: HttpStatement
         var proxyResponse: HttpResponse
         var proxiedHeaders: Headers
         var location: String?
@@ -229,25 +209,23 @@ fun Application.proxyAppModule() {
         var contentType: String?
 
         getClient().use { client ->
-            proxyRequest = when (call.request.httpMethod) {
+            proxyResponse = when (call.request.httpMethod) {
                 HttpMethod.Post, HttpMethod.Put, HttpMethod.Patch -> {
                     client.request(requestUri) {
                         method = call.request.httpMethod
                         header(HttpHeaders.ContentType, call.request.headers[HttpHeaders.ContentType])
-                        body = receiveBody(call)
-                        //body = call.request.receiveChannel() //pass the provided body to the upstream
+                        setBody(call.request.receiveChannel())
                     }
                 }
 
                 else -> {
-                    //GET, DELETE, OPTIONS, HEAD, etc - no body expected
+                    //GET, DELETE, OPTIONS, HEAD, etc. - no body in our request to the server is expected
                     client.request(requestUri) {
                         method = call.request.httpMethod
                     }
                 }
             }
-            proxyResponse = proxyRequest.execute()
-            log.debug(
+            mainLogger.debug(
                 "proxyRequest to {}, {}, status {}",
                 requestUri,
                 call.request.httpMethod.value,
@@ -281,7 +259,7 @@ fun Application.proxyAppModule() {
             )
             if (contentType?.contains(Regex("json|xml|text")) == true) {
                 //the server likely has provided an OperationOutcome itself, being FHIR-aware. Use it as an "stack trace"
-                receivedErrorString = proxyResponse.readText()
+                receivedErrorString = proxyResponse.bodyAsText()
                 val providedOutcome = KlaxonParser.default()
                     .parse(StringBuilder(receivedErrorString)) as JsonObject
                 if (providedOutcome.containsKey("resourceType") &&
@@ -295,7 +273,7 @@ fun Application.proxyAppModule() {
                 "resourceType" to "OperationOutcome", "id" to "exception",
                 "issue" to issue
             )
-            log.warn(
+            mainLogger.warn(
                 "upstream server did not accept request with status code ${proxyResponse.status} " +
                         "and error '$receivedErrorString'"
             )
@@ -322,8 +300,8 @@ fun Application.proxyAppModule() {
             // In the case of text-based content types we download the whole content and process it as a string replacing
             // upstream links.
             contentType?.contains(regexTextBody) == true -> {
-                val text = proxyResponse.readText().replaceUpstreamUrl()
-                log.debug(
+                val text = proxyResponse.bodyAsText().replaceUpstreamUrl()
+                mainLogger.debug(
                     "responding with text, ${text.length} chars, starting ${
                         text.substring(0, 30).replace("\n", " ")
                     }"
@@ -343,7 +321,7 @@ fun Application.proxyAppModule() {
                 // In the case of other content, we simply pipe it. We return a [OutgoingContent.WriteChannelContent]
                 // propagating the contentLength, the contentType and other headers, and simply we copy
                 // the ByteReadChannel from the HTTP client response, to the HTTP server ByteWriteChannel response.
-                log.debug("responding with binary stream, $contentLength bytes")
+                mainLogger.debug("responding with binary stream, $contentLength bytes")
                 call.respond(object : OutgoingContent.WriteChannelContent() {
                     override val contentLength: Long?
                         get() = contentLength?.toLong()
@@ -362,7 +340,7 @@ fun Application.proxyAppModule() {
                         get() = proxyResponse.status
 
                     override suspend fun writeTo(channel: ByteWriteChannel) {
-                        proxyResponse.content.copyAndClose(channel)
+                        proxyResponse.bodyAsChannel().copyAndClose(channel)
                     }
                 })
                 return@intercept

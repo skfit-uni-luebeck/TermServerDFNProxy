@@ -33,17 +33,19 @@ repositories {
 }
 
 dependencies {
-    implementation "io.ktor:ktor-server-netty:$ktor_version"
-    implementation "io.ktor:ktor-server-jetty:$ktor_version"
     implementation "ch.qos.logback:logback-classic:$logback_version"
-    implementation "io.ktor:ktor-server-core:$ktor_version"
-    implementation "io.ktor:ktor-server-host-common:$ktor_version"
-    implementation "io.ktor:ktor-jackson:$ktor_version"
     implementation 'com.beust:klaxon:5.0.1'
-    testImplementation "io.ktor:ktor-server-tests:$ktor_version"
-    implementation "io.ktor:ktor-client-apache:$ktor_version"
-    implementation "io.ktor:ktor-client-core:$ktor_version"
-    implementation "io.ktor:ktor-client-core-jvm:$ktor_version"
     implementation "com.natpryce:konfig:1.6.10.0"
     implementation "org.jetbrains.kotlinx:kotlinx-cli:0.3.5"
+    implementation 'io.ktor:ktor-server-content-negotiation-jvm:2.3.1'
+    implementation 'io.ktor:ktor-server-netty-jvm:2.3.1'
+    implementation 'io.ktor:ktor-server-jetty-jvm:2.3.1'
+    implementation 'io.ktor:ktor-server-core-jvm:2.3.1'
+    implementation 'io.ktor:ktor-server-host-common-jvm:2.3.1'
+    implementation 'io.ktor:ktor-serialization-jackson:2.3.1'
+    implementation 'io.ktor:ktor-client-apache-jvm:2.3.1'
+    implementation 'commons-codec:commons-codec:1.15'
+    implementation 'io.ktor:ktor-client-core-jvm:2.3.1'
+    implementation 'io.ktor:ktor-client-core-jvm:2.3.1'
+    testImplementation 'io.ktor:ktor-server-tests-jvm:2.3.1'
 }
