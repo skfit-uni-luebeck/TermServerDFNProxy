@@ -1,8 +1,4 @@
 buildscript {
-    repositories {
-        jcenter()
-    }
-
     dependencies {
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
@@ -24,14 +20,12 @@ sourceSets {
 }
 
 repositories {
-    mavenLocal()
-    jcenter()
-    maven { url 'https://kotlin.bintray.com/ktor' }
+    mavenCentral()
 }
 
 dependencies {
     implementation "ch.qos.logback:logback-classic:$logback_version"
-    implementation 'com.beust:klaxon:5.0.1'
+    implementation 'com.beust:klaxon:5.6'
     implementation "com.natpryce:konfig:1.6.10.0"
     implementation "org.jetbrains.kotlinx:kotlinx-cli:0.3.5"
     implementation 'io.ktor:ktor-server-content-negotiation-jvm:2.3.1'
