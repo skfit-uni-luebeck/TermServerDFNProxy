@@ -9,5 +9,4 @@ Proxy.useKeystore=true
 Ssl.Keystore.type=JKS
 Ssl.Keystore.filename=resources/private.jks
 Ssl.Keystore.password=password
-Ssl.Keypair.alias=private
 Ssl.Keypair.password=password

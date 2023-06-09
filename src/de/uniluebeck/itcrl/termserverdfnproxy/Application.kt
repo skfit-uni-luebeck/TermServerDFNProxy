@@ -20,16 +20,21 @@ import io.ktor.server.engine.*
 import io.ktor.server.jetty.*
 import io.ktor.util.*
 import io.ktor.utils.io.*
+import kotlinx.cli.ArgParser
+import kotlinx.cli.ArgType
 import org.apache.http.conn.ssl.NoopHostnameVerifier
 import org.apache.http.conn.ssl.TrustSelfSignedStrategy
 import org.apache.http.ssl.SSLContextBuilder
-import org.conscrypt.Conscrypt
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import java.io.FileInputStream
+import java.io.FileNotFoundException
 import java.security.KeyStore
-import java.security.Security
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import javax.net.ssl.SSLContext
+import kotlin.io.path.Path
+import kotlin.io.path.notExists
 import kotlin.text.toCharArray
 import com.beust.klaxon.Parser.Companion as KlaxonParser
 
@@ -58,32 +63,78 @@ object Ssl : PropertyGroup() {
     }
 }
 
-val configuration = ConfigurationProperties.fromResource("proxy.conf")
+lateinit var configuration: ConfigurationProperties //lateinit because we need to initialize it in main()
 
-fun sslConfig(): SSLContext = SSLContextBuilder.create().let {
+fun sslConfig(): SSLContext = SSLContextBuilder.create().let { builder ->
     return@let when (configuration[Proxy.useKeystore]) {
         true -> {
             val keyStorePassword = configuration[Ssl.Keystore.password].toCharArray()
             val keyPassword = configuration[Ssl.Keypair.password].toCharArray()
             val keyStore = KeyStore.getInstance(configuration[Ssl.Keystore.type])
+            val keyStorePath = Path(configuration[Ssl.Keystore.filename]).toAbsolutePath()
+            mainLogger.info("Using keystore for SSL configuration, path: {}", keyStorePath)
+            if (keyStorePath.notExists()) {
+                throw FileNotFoundException("The keystore file ${configuration[Ssl.Keystore.filename]} does not exist!")
+            }
             keyStore.load(FileInputStream(configuration[Ssl.Keystore.filename]), keyStorePassword)
-            it.loadKeyMaterial(keyStore, keyPassword)
+            keyStore.aliases().toList().joinToString {
+                "'$it'"
+            }.let {
+                mainLogger.info("Keystore aliases: {}", it)
+            }
+            builder.loadKeyMaterial(keyStore, keyPassword)
         }
 
-        else -> it
-    }.loadTrustMaterial(TrustSelfSignedStrategy())
-        .build()
+        else -> builder
+    }.apply {
+        loadTrustMaterial(TrustSelfSignedStrategy())
+    }.build()
 }
 
 val regexTextBody = Regex("(application|text)/(atom|fhir)?\\+?(xml|json|html|plain)")
 
+val mainLogger: Logger = LoggerFactory.getLogger("main")
+
 /**
  * adapted from https://github.com/ktorio/ktor-samples/blob/1.3.0/other/reverse-proxy/src/ReverseProxyApplication.kt
  */
-fun main() {
+fun main(args: Array<String>) {
+    val parser = ArgParser("termserver-proxy")
+    val configPath by parser.option(
+        ArgType.String,
+        shortName = "c",
+        fullName = "config",
+        description = "Path to configuration file"
+    )
+    parser.parse(args)
+    configuration = when (val configAbsPath = configPath?.let {
+        Path(it).toAbsolutePath()
+    }) {
+        null -> {
+            mainLogger.info("No config file specified, using default config")
+            try {
+                ConfigurationProperties.fromResource("proxy.conf")
+            } catch (e: Misconfiguration) {
+                throw FileNotFoundException(
+                    "The default config file could not be found at proxy.conf! " +
+                            "You can use the -c/--config command line option to specify a config file."
+                )
+            }
+
+        }
+
+        else -> {
+            if (configAbsPath.notExists()) {
+                throw FileNotFoundException("The config file path $configAbsPath does not exist!")
+            }
+            mainLogger.info("Using config file $configAbsPath")
+            ConfigurationProperties.fromFile(configAbsPath.toFile())
+        }
+    }
+
     //handle modern TLS 1.3 and TLS 1.2 with modern cipher suites, instead of relying on the JDKs security implementation
     //adapted from https://gist.github.com/Karewan/4b0270755e7053b471fdca4419467216
-    Security.insertProviderAt(Conscrypt.newProvider(), 1)
+    //Security.insertProviderAt(Conscrypt.newProvider(), 1)
     val server = embeddedServer(Jetty, configuration[Proxy.listen], module = Application::proxyAppModule)
     server.start(wait = true)
 }
@@ -108,6 +159,8 @@ fun Application.proxyAppModule() {
         }
     }
 
+    val sslConfig = sslConfig()
+
     fun getClient() = HttpClient(Apache) {
         //FHIR specifies a text body for 404 requests. If this is not set, recv'ing this payload
         //when the request 404's results in exceptions
@@ -115,7 +168,7 @@ fun Application.proxyAppModule() {
         //configure the HTTPS engine
         engine {
             customizeClient {
-                setSSLContext(sslConfig())
+                setSSLContext(sslConfig)
                 setSSLHostnameVerifier(NoopHostnameVerifier())
             }
         }
