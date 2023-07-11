@@ -1,3 +1,5 @@
+@file:Suppress("ClassName")
+
 package de.uniluebeck.itcrl.termserverdfnproxy
 
 import com.beust.klaxon.JsonArray
@@ -40,45 +42,48 @@ import kotlin.io.path.notExists
 import kotlin.text.toCharArray
 import com.beust.klaxon.Parser.Companion as KlaxonParser
 
-object Upstream : PropertyGroup() {
+object upstream : PropertyGroup() {
     val address by stringType
     val protocol by stringType
     val port by intType
 }
 
-object Proxy : PropertyGroup() {
-    val listen by intType
-    val publicAddress by stringType
-    val protocol by stringType
-    val useKeystore by booleanType
-}
+object mutualTls : PropertyGroup() {
 
-object Ssl : PropertyGroup() {
-    object Keystore : PropertyGroup() {
+    val enabled by booleanType
+
+    object keystore : PropertyGroup() {
         val type by stringType
         val filename by stringType
         val password by stringType
     }
 
-    object Keypair : PropertyGroup() {
+    object keypair : PropertyGroup() {
         val password by stringType
     }
 }
 
-lateinit var configuration: ConfigurationProperties //lateinit because we need to initialize it in main()
+object proxy : PropertyGroup() {
+    val listen by intType
+    val publicAddress by stringType
+    val protocol by stringType
+}
+
+lateinit var configuration: ConfigurationProperties // lateinit because we need to initialize it in main()
 
 fun sslConfig(): SSLContext = SSLContextBuilder.create().let { builder ->
-    return@let when (configuration[Proxy.useKeystore]) {
+    val mutualTlsEnabled = configuration.getOrElse(mutualTls.enabled, false)
+    return@let when (mutualTlsEnabled) {
         true -> {
-            val keyStorePassword = configuration[Ssl.Keystore.password].toCharArray()
-            val keyPassword = configuration[Ssl.Keypair.password].toCharArray()
-            val keyStore = KeyStore.getInstance(configuration[Ssl.Keystore.type])
-            val keyStorePath = Path(configuration[Ssl.Keystore.filename]).toAbsolutePath()
+            val keyStorePassword = configuration[mutualTls.keystore.password].toCharArray()
+            val keyPassword = configuration[mutualTls.keypair.password].toCharArray()
+            val keyStore = KeyStore.getInstance(configuration[mutualTls.keystore.type])
+            val keyStorePath = Path(configuration[mutualTls.keystore.filename]).toAbsolutePath()
             mainLogger.info("Using keystore for SSL configuration, path: {}", keyStorePath)
             if (keyStorePath.notExists()) {
-                throw FileNotFoundException("The keystore file ${configuration[Ssl.Keystore.filename]} does not exist!")
+                throw FileNotFoundException("The keystore file ${configuration[mutualTls.keystore.filename]} does not exist!")
             }
-            keyStore.load(FileInputStream(configuration[Ssl.Keystore.filename]), keyStorePassword)
+            keyStore.load(FileInputStream(configuration[mutualTls.keystore.filename]), keyStorePassword)
             keyStore.aliases().toList().joinToString {
                 "'$it'"
             }.let {
@@ -87,7 +92,17 @@ fun sslConfig(): SSLContext = SSLContextBuilder.create().let { builder ->
             builder.loadKeyMaterial(keyStore, keyPassword)
         }
 
-        else -> builder
+        else -> {
+            val mutualTlsKeys =
+                listOf<Key<*>>(mutualTls.keystore.filename, mutualTls.keystore.password, mutualTls.keypair.password)
+            val superfluousConfiguration = mutualTlsKeys.associateWith { configuration.contains(it) }
+            if (superfluousConfiguration.any { it.value }) {
+                mainLogger.warn("Mutual TLS is disabled, but the following configuration keys are set: {}",
+                    superfluousConfiguration.filter { it.value }.keys.joinToString { "'${it.name}'" })
+            }
+            builder
+        }
+
     }.apply {
         loadTrustMaterial(TrustSelfSignedStrategy())
     }.build()
@@ -103,10 +118,7 @@ val mainLogger: Logger = LoggerFactory.getLogger("termserver-proxy")
 fun main(args: Array<String>) {
     val parser = ArgParser("termserver-proxy")
     val configPath by parser.option(
-        ArgType.String,
-        shortName = "c",
-        fullName = "config",
-        description = "Path to configuration file"
+        ArgType.String, shortName = "c", fullName = "config", description = "Path to configuration file"
     )
     parser.parse(args)
     configuration = when (val configAbsPath = configPath?.let {
@@ -118,8 +130,7 @@ fun main(args: Array<String>) {
                 ConfigurationProperties.fromResource("proxy.conf")
             } catch (e: Misconfiguration) {
                 throw FileNotFoundException(
-                    "The default config file could not be found at proxy.conf! " +
-                            "You can use the -c/--config command line option to specify a config file."
+                    "The default config file could not be found at proxy.conf! " + "You can use the -c/--config command line option to specify a config file."
                 )
             }
 
@@ -134,8 +145,18 @@ fun main(args: Array<String>) {
         }
     }
 
-    val server = embeddedServer(Jetty, configuration[Proxy.listen], module = Application::proxyAppModule)
+    val server = embeddedServer(factory = Jetty, environment = configureEnvironment())
     server.start(wait = true)
+}
+
+fun configureEnvironment(): ApplicationEngineEnvironment {
+    return applicationEngineEnvironment {
+        log = LoggerFactory.getLogger("termserver-proxy")
+        connector {
+            port = configuration[proxy.listen]
+        }
+        module(Application::proxyAppModule)
+    }
 }
 
 fun addCors(call: ApplicationCall) {
@@ -143,7 +164,7 @@ fun addCors(call: ApplicationCall) {
     call.response.header(HttpHeaders.AccessControlAllowMethods, "GET, POST, PUT, DELETE, OPTIONS")
     call.response.header(
         HttpHeaders.AccessControlAllowHeaders,
-        "X-FHIR-Starter,Accept,Authorization,Cache-Control,Content-Type,Access-Control-Request-Method,Access-Control-Request-Headers,DNT,If-Match,If-None-Match,If-Modified-Since,Keep-Alive,Origin,User-Agent,X-Requested-With,Prefer"
+        "X-FHIR-Starter,Accept,Authorization,Cache-Control,Content-Type,Access-Control-Request-Method," + "Access-Control-Request-Headers,DNT,If-Match,If-None-Match,If-Modified-Since,Keep-Alive," + "Origin,User-Agent,X-Requested-With,Prefer"
     )
     call.response.header(HttpHeaders.AccessControlMaxAge, 60 * 60 * 24)
 }
@@ -153,8 +174,7 @@ fun addMoreHeaders(call: ApplicationCall, upstreamUri: String) {
     call.response.header("X-Upstream-Url", upstreamUri)
 }
 
-fun Application.proxyAppModule() {
-    /*
+fun Application.proxyAppModule() {/*
      * used for sending out JSON
      */
     install(ContentNegotiation) {
@@ -190,28 +210,22 @@ fun Application.proxyAppModule() {
             return@intercept //OPTIONS means we are done!
         }
 
-        val upstreamUri = "${configuration[Upstream.protocol]}://${
-            configuration[Upstream.address].replace(
-                Regex("https?://"),
-                ""
+        val upstreamUri = "${configuration[upstream.protocol]}://${
+            configuration[upstream.address].replace(
+                Regex("https?://"), ""
             )
         }"
         val requestPath = this.context.request.uri.trimStart('/')
-        val requestUri = "$upstreamUri:${configuration[Upstream.port]}/$requestPath".also { mainLogger.info(it) }
+        val requestUri = "$upstreamUri:${configuration[upstream.port]}/$requestPath".also { mainLogger.info(it) }
         //we need to provide a body for POST, PUT, PATCH, but none otherwise
 
         val payloadToUpstreamSize = call.request.headers[HttpHeaders.ContentLength]?.toIntOrNull()?.let {
             "$it bytes payload, "
         } ?: ""
         mainLogger.info(
-            "${call.request.origin.serverHost}:${call.request.origin.serverPort} " +
-                    "${LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)} " +
-                    "${call.request.httpMethod.value} " +
-                    "\"${call.request.uri}\" " +
-                    payloadToUpstreamSize +
-                    "${call.request.headers[HttpHeaders.ContentType] ?: "-"} " +
-                    "\"${call.request.headers[HttpHeaders.UserAgent]}\"" +
-                    "; request-id $requestId"
+            "${call.request.origin.serverHost}:${call.request.origin.serverPort} " + "${
+                LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+            } " + "${call.request.httpMethod.value} " + "\"${call.request.uri}\" " + payloadToUpstreamSize + "${call.request.headers[HttpHeaders.Accept] ?: "-"} " + "\"${call.request.headers[HttpHeaders.UserAgent]}\"" + "; request-id $requestId"
         )
 
         var proxyResponse: HttpResponse
@@ -252,45 +266,37 @@ fun Application.proxyAppModule() {
             )
         }
 
-        //check if the status code indicates that the server handled the request correctly. This does not 404s,
+        //check if the status code indicates that the server handled the request correctly. This does include 404s,
         //because those indicate that the server handled the request correctly, but the original request is to blame
+        if (contentType.equals("text/html")) {
+            mainLogger.debug("upstream server responded with HTML")
+        }
         if (!listOf(
-                HttpStatusCode.OK,
-                HttpStatusCode.Created,
-                HttpStatusCode.NotFound,
-                HttpStatusCode.NoContent
-            ).contains(proxyResponse.status)
+                HttpStatusCode.OK, HttpStatusCode.Created, HttpStatusCode.NotFound, HttpStatusCode.NoContent
+            ).contains(proxyResponse.status) && contentType != "text/html"
         ) {
             //we want to respond with an OperationOutcome resource in the spirit of FHIR
             var receivedErrorString = "none given"
             val issue = mutableListOf(
                 mapOf(
-                    "code" to proxyResponse.status.value.toString(), "severity" to "error",
-                    "details" to mapOf(
-                        "text" to "upstream server did not accept request " +
-                                "with status code ${proxyResponse.status.value}"
+                    "code" to proxyResponse.status.value.toString(), "severity" to "error", "details" to mapOf(
+                        "text" to "upstream server did not accept request " + "with status code ${proxyResponse.status.value}"
                     )
                 )
             )
             if (contentType?.contains(Regex("json|xml|text")) == true) {
                 //the server likely has provided an OperationOutcome itself, being FHIR-aware. Use it as an "stack trace"
                 receivedErrorString = proxyResponse.bodyAsText()
-                val providedOutcome = KlaxonParser.default()
-                    .parse(StringBuilder(receivedErrorString)) as JsonObject
-                if (providedOutcome.containsKey("resourceType") &&
-                    providedOutcome["resourceType"]?.equals("OperationOutcome") == true
-                ) {
-                    @Suppress("UNCHECKED_CAST")
-                    issue += (providedOutcome["issue"] as JsonArray<*>)[0] as Map<String, Any> //UNCHECKED cast, but should be safe for FHIR R4!
+                val providedOutcome = KlaxonParser.default().parse(StringBuilder(receivedErrorString)) as JsonObject
+                if (providedOutcome.containsKey("resourceType") && providedOutcome["resourceType"]?.equals("OperationOutcome") == true) {
+                    @Suppress("UNCHECKED_CAST") issue += (providedOutcome["issue"] as JsonArray<*>)[0] as Map<String, Any> //UNCHECKED cast, but should be safe for FHIR R4!
                 }
             }
             val responseJson = mutableMapOf(
-                "resourceType" to "OperationOutcome", "id" to "exception",
-                "issue" to issue
+                "resourceType" to "OperationOutcome", "id" to "exception", "issue" to issue
             )
             mainLogger.warn(
-                "upstream server did not accept request with status code ${proxyResponse.status} " +
-                        "and error '$receivedErrorString'"
+                "upstream server did not accept request with status code ${proxyResponse.status} " + "and error '$receivedErrorString'"
             )
             addCors(call)
             addMoreHeaders(call, upstreamUri)
@@ -302,8 +308,8 @@ fun Application.proxyAppModule() {
          * function to replace all mentions of the upstream URL with our endpoint (e.g. in the syndication feed!)
          */
         fun String.replaceUpstreamUrl() = this.replace(
-            Regex("(https?:)?//${configuration[Upstream.address]}(:${configuration[Upstream.port]})?"),
-            "${configuration[Proxy.protocol]}://${configuration[Proxy.publicAddress]}"
+            Regex("(https?:)?//${configuration[upstream.address]}(:${configuration[upstream.port]})?"),
+            "${configuration[proxy.protocol]}://${configuration[proxy.publicAddress]}"
         )
         /**
          * if the upstream had a Location header, insert our endpoint here
@@ -326,9 +332,7 @@ fun Application.proxyAppModule() {
                 addMoreHeaders(call, upstreamUri)
                 call.respond(
                     TextContent(
-                        text,
-                        ContentType.parse(contentType!!),
-                        proxyResponse.status
+                        text, ContentType.parse(contentType!!), proxyResponse.status
                     )
                 )
                 return@intercept
