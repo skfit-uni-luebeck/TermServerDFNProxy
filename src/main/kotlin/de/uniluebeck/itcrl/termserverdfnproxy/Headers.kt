@@ -21,7 +21,15 @@ fun addMoreHeaders(call: ApplicationCall, upstreamUri: String) {
     call.response.header("X-Upstream-Url", upstreamUri)
 }
 
-val hstsHeader by lazy {
+val hstsHeader: String? by lazy {
+    if (!configuration.getOrElse(proxy.https.enabled, false)) {
+        mainLogger.debug("HSTS is disabled because HTTPS is disabled.")
+        return@lazy null
+    }
+    if (!configuration.getOrElse(proxy.https.hsts.enabled, false)) {
+        mainLogger.debug("HSTS is disabled because it is disabled in the configuration.")
+        return@lazy null
+    }
     val includeSubDomains = configuration.getOrElse(proxy.https.hsts.includeSubDomains, true)
     val preload = configuration.getOrElse(proxy.https.hsts.preload, false)
     val maxAge = configuration.getOrElse(proxy.https.hsts.maxAgeSeconds, 31_536_000)
@@ -32,7 +40,7 @@ val hstsHeader by lazy {
         if (preload) append("; preload")
     }
     mainLogger.info("HSTS header: $hstsHeader")
-    hstsHeader
+    return@lazy hstsHeader
 }
 
 fun addHsts(call: ApplicationCall) {
@@ -43,6 +51,6 @@ fun addHsts(call: ApplicationCall) {
         exitProcess(2)
     }
     if (hstsEnabled) {
-        call.response.header(HttpHeaders.StrictTransportSecurity, hstsHeader)
+        call.response.header(HttpHeaders.StrictTransportSecurity, hstsHeader!!)
     }
 }

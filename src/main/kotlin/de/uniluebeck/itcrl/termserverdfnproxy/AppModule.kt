@@ -262,6 +262,9 @@ fun Application.proxyAppModule() {
                         appendAll(proxiedHeaders.filter { key, _ ->
                             key != HttpHeaders.ContentType && key != HttpHeaders.ContentLength && key != HttpHeaders.TransferEncoding
                         })
+                        if (hstsHeader != null) {
+                            append(HttpHeaders.StrictTransportSecurity, hstsHeader!!)
+                        }
                     }
                     override val status: HttpStatusCode
                         get() = proxyResponse.status
