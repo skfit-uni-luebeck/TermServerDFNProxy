@@ -10,7 +10,7 @@ within POLAR\_MI and CORD-MI, and within the Network University Medicine (NUM).
 
 Only authenticated clients can access resources on this server.
 You will need to obtain a certificate issued within the
-Deutsches Forschungsnetz-Private Key infractructure (DFN-PKI)
+Deutsches Forschungsnetz-Private Key infrastructure (DFN-PKI)
 with the profile "User" or "802.1X Client" to use this service.
 
 To consume resources on this server, you should make sure that
@@ -33,7 +33,8 @@ possible using this proxy, if your local Ontoserver points at this proxy.
 
 To set up this system, you will a current Java Development Kit, e.g. from https://azul.com
 The project is built using Gradle. You will also need your certificate and private key in a format
-that can be consumed by the JDK (PKCS12 or JKS format recommended, you can use https://keystore-explorer.org/ for
+that can be consumed by the JDK (PKCS12 or JKS format recommended, you can
+use [Keystore Explorer](https://keystore-explorer.org/) and the [`step` CLI](https://smallstep.com/docs/step-cli/) for
 converting to these formats).
 
 ## Docker
