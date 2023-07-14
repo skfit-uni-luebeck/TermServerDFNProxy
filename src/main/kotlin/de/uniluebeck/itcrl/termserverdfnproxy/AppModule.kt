@@ -46,6 +46,7 @@ fun Application.proxyAppModule() {
 
         hstsEnabled && httpsEnabled -> {
             val redirectPort = configuration.getOrElse(proxy.https.port, 443)
+            log.info("Enabling HSTS with header: $hstsHeader")
             log.info("Redirecting HTTP to HTTPS on port $redirectPort")
             install(HttpsRedirect) {
                 // The port to redirect to. By default, 443, the default HTTPS port.
