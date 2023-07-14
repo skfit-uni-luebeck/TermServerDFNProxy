@@ -18,7 +18,7 @@ your client code is aware of this restriction and apply for such
 a certificate. Contact your universities' IT department for assistance
 when applying for such a certificate.
 
-This project can help you accessing the central server with clients that are
+This project can help you to access the central server with clients that are
 unable to authenticate using TLS certificates themselves. It serves as a reverse
 proxy that sits in front of the internet that routes all requests to it to the central
 instance, with the body intact. During this step, it will present the configured
@@ -27,7 +27,7 @@ can be done over HTTP, while it will communicate with the central instance over 
 
 The software is written in Kotlin using the ktor.io framework (version 1.4.1) both to
 host the server and to make client requests. When requesting plain-text resources (MIME
-types matching `/(application|text)/(fhir|atom)?+?(json|xml|plain|html)/`), all occurences
+types matching `/(application|text)/(fhir|atom)?+?(json|xml|plain|html)/`), all occurrences
 of the configured upstream url are rewritten to point to the proxy. This makes syndication
 possible using this proxy, if your local Ontoserver points at this proxy.
 
@@ -48,9 +48,14 @@ and maybe change the bind mound path accordingly in the docker-compose file.
 By default, the application will be exposed on port 4242, and you can change this in the docker-compose file.
 
 For a permanent deployment, you will need to also adjust the public address in the configuration file to match your
-hostname, so that the proxy can rewrite the URLs in the responses from the central server correctly. Currently, this app
-doesn't do TLS termination, so you will need to put it behind a reverse proxy that does TLS termination for you if
-required. If you do so, also adjust the protocol in the configuration file to `https`.
+hostname, so that the proxy can rewrite the URLs in the responses from the central server correctly. The app also
+supports HTTPS, and it's strongly recommended that you use it. To do so, you will need to provide a certificate and
+configure the appropriate configurations. It is also recommended to redirect all HTTP requests to HTTPS, and [enabling
+HTTP Strict Transport Security (HSTS)](https://https.cio.gov/hsts/). This is supported directly in-app, but some users
+may want to deploy the proxy behind a reverse proxy that handles HTTPS and HSTS for them. In this case, you will also
+need to configure the URL parameters for HTTPS, so that the app can rewrite the URLs to the correct endpoint. Note that
+this app only supports deployments behind a reverse proxy for HTTPS. You can connect to the reverse proxy via HTTP, but
+the proxy will always report HTTPS urls to the client.
 
 If you need to change the build architecture (e.g. when running on an ARM-based system), it is recommended to build the
 docker container from source. Simply uncomment the following line from the docker-compose file:

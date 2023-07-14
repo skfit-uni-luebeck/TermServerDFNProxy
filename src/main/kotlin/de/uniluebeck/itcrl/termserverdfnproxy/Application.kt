@@ -114,7 +114,12 @@ fun configureEnvironment(): ApplicationEngineEnvironment {
 
 private fun ApplicationEngineEnvironmentBuilder.configureHttps() {
     when (configuration.getOrElse(proxy.https.behindReverseProxy, false)) {
-        true -> mainLogger.info("HTTPS enabled behind reverse proxy at $httpsEndpoint")
+        true -> {mainLogger.info("HTTPS enabled behind reverse proxy at $httpsEndpoint")
+            if (configuration.getOrElse(proxy.https.hsts.enabled, false)) {
+                mainLogger.error("HSTS is enabled, but HTTPS is behind a reverse proxy! This is unsupported!")
+                exitProcess(3)
+            }
+        }
         else -> {
             mainLogger.info("HTTPS enabled on $httpsEndpoint")
             val httpsKeystore = loadKeystoreFromProperties(
