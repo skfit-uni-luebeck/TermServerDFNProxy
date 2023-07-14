@@ -54,7 +54,7 @@ configure the appropriate configurations. It is also recommended to redirect all
 HTTP Strict Transport Security (HSTS)](https://https.cio.gov/hsts/). This is supported directly in-app, but some users
 may want to deploy the proxy behind a reverse proxy that handles HTTPS and HSTS for them. In this case, you will also
 need to configure the URL parameters for HTTPS, so that the app can rewrite the URLs to the correct endpoint. Note that
-this app only supports deployments behind a reverse proxy for HTTPS. You can connect to the reverse proxy via HTTP, but
+this app only supports deployments behind a reverse proxy for HTTPS. You connect to the reverse proxy via HTTP, but
 the proxy will always report HTTPS urls to the client.
 
 If you need to change the build architecture (e.g. when running on an ARM-based system), it is recommended to build the
