@@ -39,7 +39,6 @@ val hstsHeader: String? by lazy {
         if (includeSubDomains) append("; includeSubDomains")
         if (preload) append("; preload")
     }
-    mainLogger.info("HSTS header: $hstsHeader")
     return@lazy hstsHeader
 }
 

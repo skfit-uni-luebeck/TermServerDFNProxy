@@ -22,6 +22,33 @@ val regexTextBody = Regex("(application|text)/(atom|fhir)?\\+?(xml|json|html|pla
 
 val mainLogger: Logger = LoggerFactory.getLogger("termserver-proxy")
 
+val proxyHttpEnabled by lazy { configuration.getOrElse(proxy.http.enabled, false) }
+val proxyHttpsEnabled by lazy { configuration.getOrElse(proxy.https.enabled, false) }
+val proxyHstsEnabled by lazy { configuration.getOrElse(proxy.https.hsts.enabled, false) }
+val proxyHttpRedirect by lazy { configuration.getOrElse(proxy.http.redirectToHttps, false) }
+val proxyHttpPort by lazy {
+    configuration[proxy.http.port]
+}
+val proxyHttpsPort by lazy {
+    configuration[proxy.https.port]
+}
+val proxyHostname by lazy { configuration[proxy.hostname] }
+val proxyPath by lazy { configuration.getOrElse(proxy.path, "") }
+
+val httpEndpoint by lazy {
+    if (proxyHttpEnabled) {
+        val printPort = if (proxyHttpPort == 80) "" else ":$proxyHttpPort"
+        "http://$proxyHostname$printPort$proxyPath"
+    } else null
+}
+
+val httpsEndpoint by lazy {
+    if (proxyHttpsEnabled) {
+        val printPort = if (proxyHttpsPort == 443) "" else ":$proxyHttpsPort"
+        "https://$proxyHostname$printPort$proxyPath"
+    } else null
+}
+
 /**
  * adapted from https://github.com/ktorio/ktor-samples/blob/1.3.0/other/reverse-proxy/src/ReverseProxyApplication.kt
  */
@@ -60,23 +87,17 @@ fun main(args: Array<String>) {
 }
 
 fun configureEnvironment(): ApplicationEngineEnvironment {
-    @Suppress("HttpUrlsUsage")
     return applicationEngineEnvironment {
         log = mainLogger
         val httpEnabled = configuration.getOrNull(proxy.http.enabled)
         val httpsEnabled = configuration.getOrNull(proxy.https.enabled)
-        val host = configuration[proxy.hostname]
+        configuration[proxy.hostname]
         (if (httpEnabled == null && httpsEnabled == null) {
             mainLogger.error("Neither HTTP nor HTTPS is enabled in the config! Use properties 'proxy.http.enabled' and/or 'proxy.https.enabled' to enable one or both.")
             exitProcess(1)
         })
 
         if (httpEnabled == true) {
-            val portInUrl = when (val httpPort = configuration[proxy.http.port]) {
-                80 -> ""
-                else -> ":$httpPort"
-            }
-            val httpEndpoint = "http://$host$portInUrl"
             mainLogger.info("HTTP enabled on $httpEndpoint")
             this.connector {
                 port = configuration[proxy.http.port]
@@ -84,19 +105,14 @@ fun configureEnvironment(): ApplicationEngineEnvironment {
         }
 
         if (httpsEnabled == true) {
-            val portInUrl = when (val httpsPort = configuration[proxy.https.port]) {
-                443 -> ""
-                else -> ":$httpsPort"
-            }
-            val httpsEndpoint = "https://$host$portInUrl"
-            configureHttps(httpsEndpoint)
+            configureHttps()
         }
 
         module(Application::proxyAppModule)
     }
 }
 
-private fun ApplicationEngineEnvironmentBuilder.configureHttps(httpsEndpoint: String) {
+private fun ApplicationEngineEnvironmentBuilder.configureHttps() {
     when (configuration.getOrElse(proxy.https.behindReverseProxy, false)) {
         true -> mainLogger.info("HTTPS enabled behind reverse proxy at $httpsEndpoint")
         else -> {

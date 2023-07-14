@@ -7,10 +7,12 @@ import com.natpryce.konfig.*
 object proxy : PropertyGroup() {
 
     val hostname by stringType
+    val path by stringType
 
     object http: PropertyGroup() {
         val enabled by booleanType
         val port by intType
+        val redirectToHttps by booleanType
     }
 
     object https: PropertyGroup() {

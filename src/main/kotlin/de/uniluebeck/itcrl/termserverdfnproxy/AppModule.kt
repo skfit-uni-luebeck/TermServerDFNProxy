@@ -36,22 +36,19 @@ fun Application.proxyAppModule() {
         }
     }
 
-    val httpsEnabled = configuration.getOrElse(proxy.https.enabled, false)
-    val hstsEnabled = configuration.getOrElse(proxy.https.hsts.enabled, false)
     when {
-        hstsEnabled && !httpsEnabled -> {
+        proxyHstsEnabled && !proxyHttpsEnabled -> {
             log.error("HSTS is enabled but HTTPS is not! Please enable HTTPS or disable HSTS.")
             exitProcess(2)
         }
 
-        hstsEnabled && httpsEnabled -> {
-            val redirectPort = configuration.getOrElse(proxy.https.port, 443)
+        proxyHstsEnabled && proxyHttpsEnabled -> {
+            val redirectPort = proxyHttpsPort
             log.info("Enabling HSTS with header: $hstsHeader")
             log.info("Redirecting HTTP to HTTPS on port $redirectPort")
             install(HttpsRedirect) {
-                // The port to redirect to. By default, 443, the default HTTPS port.
                 sslPort = redirectPort
-                // 301 Moved Permanently, or 302 Found redirect.
+                // 301 Moved Permanently, or 302 Found redirect, we want to use 301.
                 permanentRedirect = true
             }
         }
@@ -90,12 +87,29 @@ fun Application.proxyAppModule() {
             return@intercept //OPTIONS means we are done!
         }
 
+        if (this.context.request.local.scheme == "http") {
+            if (proxyHstsEnabled || proxyHttpRedirect) {
+                addCors(call)
+                addHsts(call)
+                val redirectUrl = "$httpsEndpoint${this.context.request.uri}"
+                call.respondRedirect(
+                    url = redirectUrl,
+                    permanent = true
+                )
+            }
+        }
+
         val upstreamUri = "${configuration[upstream.protocol]}://${
             configuration[upstream.address].replace(
                 Regex("https?://"), ""
             )
         }"
-        val requestPath = this.context.request.uri.trimStart('/')
+        val requestPath = this.context.request.uri.let {
+            if (proxyPath.isNotBlank()) {
+                return@let it.replace(proxyPath, "")
+            }
+            return@let it
+        }.trimStart('/')
         val requestUri = "$upstreamUri:${configuration[upstream.port]}/$requestPath".also { mainLogger.info(it) }
 
         /**
@@ -196,14 +210,11 @@ fun Application.proxyAppModule() {
             return@intercept //we are done handling this request
         }
 
-        val proxyHttpPort = configuration[proxy.http.port]
-        val proxyHttpsPort = configuration[proxy.https.port]
-        val proxyHostname = configuration[proxy.hostname]
         val ourUrl = when (call.request.port()) {
-            proxyHttpPort -> "http://$proxyHostname:$proxyHttpPort"
-            proxyHttpsPort -> "https://$proxyHostname:$proxyHttpsPort"
+            proxyHttpPort -> httpEndpoint
+            proxyHttpsPort -> httpsEndpoint
             else -> throw IllegalStateException("unknown port ${call.request.port()}")
-        }
+        }.let { it!! }
 
         /**
          * function to replace all mentions of the upstream URL with our endpoint (e.g. in the syndication feed!)
