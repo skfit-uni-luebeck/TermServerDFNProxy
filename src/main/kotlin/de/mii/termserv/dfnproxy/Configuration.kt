@@ -1,6 +1,6 @@
 @file:Suppress("ClassName")
 
-package de.uniluebeck.itcrl.termserverdfnproxy
+package de.mii.termserv.dfnproxy
 
 import com.natpryce.konfig.*
 

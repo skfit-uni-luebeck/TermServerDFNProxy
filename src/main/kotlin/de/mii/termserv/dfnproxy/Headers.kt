@@ -1,4 +1,4 @@
-package de.uniluebeck.itcrl.termserverdfnproxy
+package de.mii.termserv.dfnproxy
 
 import io.ktor.http.*
 import io.ktor.server.application.*

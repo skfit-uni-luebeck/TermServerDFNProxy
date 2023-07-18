@@ -1,6 +1,6 @@
 @file:Suppress("HttpUrlsUsage")
 
-package de.uniluebeck.itcrl.termserverdfnproxy
+package de.mii.termserv.dfnproxy
 
 import com.beust.klaxon.JsonArray
 import com.beust.klaxon.JsonObject

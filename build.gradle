@@ -11,9 +11,9 @@ plugins {
 
 apply plugin: 'kotlin'
 
-group 'de.uniluebeck.itcrl'
-version '1.0.0'
-mainClassName = "de.uniluebeck.itcrl.termserverdfnproxy.ApplicationKt"
+group 'de.mii.termserv'
+version '1.1.0'
+mainClassName = "de.mii.termserv.dfnproxy.ApplicationKt"
 
 sourceSets {
     main.resources.srcDirs = ['resources']

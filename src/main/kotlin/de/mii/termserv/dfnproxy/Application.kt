@@ -1,6 +1,6 @@
 @file:Suppress("ClassName")
 
-package de.uniluebeck.itcrl.termserverdfnproxy
+package de.mii.termserv.dfnproxy
 
 import com.natpryce.konfig.ConfigurationProperties
 import com.natpryce.konfig.Misconfiguration
@@ -114,7 +114,8 @@ fun configureEnvironment(): ApplicationEngineEnvironment {
 
 private fun ApplicationEngineEnvironmentBuilder.configureHttps() {
     when (configuration.getOrElse(proxy.https.behindReverseProxy, false)) {
-        true -> {mainLogger.info("HTTPS enabled behind reverse proxy at $httpsEndpoint")
+        true -> {
+            mainLogger.info("HTTPS enabled behind reverse proxy at $httpsEndpoint")
             if (configuration.getOrElse(proxy.https.hsts.enabled, false)) {
                 mainLogger.error("HSTS is enabled, but HTTPS is behind a reverse proxy! This is unsupported!")
                 exitProcess(3)

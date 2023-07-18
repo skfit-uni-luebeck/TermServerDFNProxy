@@ -1,4 +1,4 @@
-package de.uniluebeck.itcrl.termserverdfnproxy
+package de.mii.termserv.dfnproxy
 
 import com.natpryce.konfig.Key
 import org.apache.http.conn.ssl.TrustAllStrategy

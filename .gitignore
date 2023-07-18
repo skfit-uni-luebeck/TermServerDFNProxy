@@ -180,7 +180,11 @@ gradle-app.setting
 #do not add config which will contain passwords
 **/proxy.conf
 #do not add key material
-**/*.jks
 **/*.p12
 **/*.pem
+**/*.crt
+**/*.key
+**/*.pfx
+**/*.jks
+**/*.jceks
 
