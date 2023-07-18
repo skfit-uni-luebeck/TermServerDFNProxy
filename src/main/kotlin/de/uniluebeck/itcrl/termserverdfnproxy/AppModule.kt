@@ -136,6 +136,9 @@ fun Application.proxyAppModule() {
                     client.request(requestUri) {
                         method = call.request.httpMethod
                         header(HttpHeaders.ContentType, call.request.headers[HttpHeaders.ContentType])
+                        header(HttpHeaders.XForwardedHost, call.request.headers[HttpHeaders.Host])
+                        header(HttpHeaders.XForwardedProto, call.request.origin.scheme)
+                        header(HttpHeaders.XForwardedFor, call.request.origin.remoteHost)
                         setBody(call.request.receiveChannel())
                     }
                 }
