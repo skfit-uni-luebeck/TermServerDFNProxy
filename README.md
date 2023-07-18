@@ -6,7 +6,12 @@ The current central Ontoserver instance for the German Medizininformatik-Initiat
 hosted in Cologne, available at https://terminology-highmed.medic.medfak.uni-koeln.de/,
 is secured by Mutual TLS Authentication. The service is available to individuals and
 organizations within the MI-I, as partners of and actors in the 4 consortia,
-within POLAR\_MI and CORD-MI, and within the Network University Medicine (NUM).
+within POLAR\_MI and CORD-MI, and within the Network University Medicine (NUM). The service is provided through the
+Service Unit Terminological Services (SU-TermServ) of the MII, through the Universities of Lübeck, Cologne and the
+Hanover Medical School (MHH).
+
+**Before accessing the server, users must enter a binding agreement with the team. Information is available on
+the [website of SU-TermServ](https://mii-termserv.de/services/Access/).**
 
 Only authenticated clients can access resources on this server.
 You will need to obtain a certificate issued within the
@@ -25,11 +30,14 @@ instance, with the body intact. During this step, it will present the configured
 server certificate to the Ontoserver in Cologne. Communication with this reverse proxy
 can be done over HTTP, while it will communicate with the central instance over HTTPS.
 
-The software is written in Kotlin using the ktor.io framework (version 1.4.1) both to
+The software is written in Kotlin using the [ktor.io](https://ktor.io) framework both to
 host the server and to make client requests. When requesting plain-text resources (MIME
 types matching `/(application|text)/(fhir|atom)?+?(json|xml|plain|html)/`), all occurrences
 of the configured upstream url are rewritten to point to the proxy. This makes syndication
 possible using this proxy, if your local Ontoserver points at this proxy.
+
+**Do not use this application to host a gateway to the central server in the public Internet. This would violate the
+terms of use of the central server.**
 
 To set up this system, you will a current Java Development Kit, e.g. from https://azul.com
 The project is built using Gradle. You will also need your certificate and private key in a format
